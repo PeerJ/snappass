@@ -1,20 +1,35 @@
 import os
 import uuid
-
+import yaml
 import redis
 
 from flask import abort, Flask, render_template, request
 
+config = dict()
+config['NO_SSL'] = os.environ.get('NO_SSL', False)
+config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'Secret Key')
+config['STATIC_URL'] = os.environ.get('STATIC_URL', 'static')
+config['REDIS_HOST'] = os.environ.get('REDIS_HOST', 'localhost')
+config['REDIS_PORT'] = os.environ.get('REDIS_PORT', 6379)
+config['REDIS_DB'] = os.environ.get('REDIS_DB', 0)
+config['REDIS_PASSWORD'] = os.environ.get('REDIS_PASSWORD', None)
 
-NO_SSL = os.environ.get('NO_SSL', False)
+CONFIG_FILE = os.environ.get('SNAPPASS_CONFIG', None)
+if CONFIG_FILE and os.path.isfile(CONFIG_FILE):
+    config_data = open(CONFIG_FILE)
+    # merge dictionaries - prefer config file settings if present
+    config = dict(config.items() + yaml.load(config_data).items())
+    config_data.close()
+
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'Secret Key')
-app.config.update(
-    dict(STATIC_URL=os.environ.get('STATIC_URL', 'static')))
+app.secret_key = config['SECRET_KEY']
+app.config.update(dict(STATIC_URL=config['STATIC_URL']))
 
 id_ = lambda: uuid.uuid4().hex
-redis_host = os.environ.get('REDIS_HOST', 'localhost')
-redis_client = redis.StrictRedis(host=redis_host, port=6379, db=0)
+redis_client = redis.StrictRedis(host=config['REDIS_HOST'],
+                                 port=config['REDIS_PORT'],
+                                 db=config['REDIS_DB'],
+                                 password=config['REDIS_PASSWORD'])
 
 time_conversion = {
     'week': 604800,
@@ -64,7 +79,7 @@ def handle_password():
     ttl, password = clean_input()
     key = set_password(password, ttl)
 
-    if NO_SSL:
+    if config['NO_SSL']:
         base_url = request.url_root
     else:
         base_url = request.url_root.replace("http://", "https://")
